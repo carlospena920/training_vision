@@ -1,0 +1,7 @@
+names:
+  0: Endform
+
+path: datasets/Best_seg_020626
+
+train: images/train
+val: images/val
