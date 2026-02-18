@@ -1,0 +1,13 @@
+names:
+  0: Wrinkle
+  1: Split
+  2: Edge
+  3: Burr
+  4: Streaked
+  5: Nylon on Form
+
+path: datasets/Best_Seg_Def_Diag021726
+
+train: images/train
+val: images/val
+

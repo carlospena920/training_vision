@@ -1,0 +1,6 @@
+*.png
+venv/
+images/
+labels/
+*.pt
+runs/
