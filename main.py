@@ -292,9 +292,15 @@ def step_3_split_nok_train_val(dataset_root: Path, val_percentage_value: int) ->
     images_val = dataset_root / "images" / "val"
     labels_val = dataset_root / "labels" / "val"
 
-    for folder in (images_train, labels_train, images_val, labels_val):
-        if not folder.exists() or not folder.is_dir():
-            raise FileNotFoundError(f"Missing folder: {folder}")
+    if not images_train.exists() or not images_train.is_dir():
+        raise FileNotFoundError(f"Missing folder: {images_train}")
+    if not labels_train.exists() or not labels_train.is_dir():
+        raise FileNotFoundError(f"Missing folder: {labels_train}")
+
+    images_val.mkdir(parents=True, exist_ok=True)
+    labels_val.mkdir(parents=True, exist_ok=True)
+    print(f"Folder lista: {images_val}")
+    print(f"Folder lista: {labels_val}")
 
     train_image_map, train_label_map = _load_split_pair_maps(images_train, labels_train, "train")
     val_image_map, val_label_map = _load_split_pair_maps(images_val, labels_val, "val")
