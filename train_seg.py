@@ -7,7 +7,7 @@ def main():
     settings.update({"mlflow": True})
     
     # Configure MLflow
-    run_name = "Best_Seg_DefSide021326" # name of folder which includes data.yaml and images and labels folders
+    run_name = "Best_Seg_DefSide021326"
     if not run_name:
       run_name = input("Enter run name (name of folder which includes data.yaml): ")
 
@@ -15,7 +15,7 @@ def main():
     data = f"datasets/{run_name}/data.yaml"
 
     # Train model
-    model = YOLO("yolo26n.pt")
+    model = YOLO("yolo26s --seg.pt")
     results = model.train(
         device=0,
         data=data,

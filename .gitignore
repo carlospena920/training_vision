@@ -4,3 +4,6 @@ images/
 labels/
 *.pt
 runs/
+*.pyc
+*.yaml
+train.txt
