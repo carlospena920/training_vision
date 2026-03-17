@@ -11,6 +11,7 @@ model = "yolo26s --seg.pt"  # Base model for YOLO(...)
 val_percentage = 20  # Reserved for upcoming steps
 nok_percentage = 35  # Reserved for upcoming steps
 dry_run = True  # True = simulate deletes, False = delete orphan files
+max_images = 0  # Max images to keep per split (train/val). 0 = no limit
 
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
@@ -141,6 +142,70 @@ def step_1_sync_train_pairs(dataset_root: Path, dry_run_mode: bool) -> dict:
         "deleted": deleted_count,
         "delete_errors": delete_errors,
     }
+
+
+def step_limit_images(dataset_root: Path, limit: int, dry_run_mode: bool) -> None:
+    print(f"\nPaso 1.5: Limitar imagenes en train a {limit} (con sus labels)")
+
+    if limit <= 0:
+        print("max_images=0, sin limite. Se omite este paso.")
+        return
+
+    images_train = dataset_root / "images" / "train"
+    labels_train = dataset_root / "labels" / "train"
+
+    if not images_train.exists() or not images_train.is_dir():
+        raise FileNotFoundError(f"Missing folder: {images_train}")
+    if not labels_train.exists() or not labels_train.is_dir():
+        raise FileNotFoundError(f"Missing folder: {labels_train}")
+
+    image_map = _single_file_per_stem(build_file_map(images_train, IMAGE_EXTENSIONS), "images/train")
+    label_map = _single_file_per_stem(build_file_map(labels_train, LABEL_EXTENSIONS), "labels/train")
+
+    paired_stems = sorted(set(image_map.keys()) & set(label_map.keys()))
+    current_count = len(paired_stems)
+
+    print(f"Pares actuales en train: {current_count}")
+    print(f"Limite configurado: {limit}")
+
+    if current_count <= limit:
+        print("No se requiere recorte, la cantidad ya esta dentro del limite.")
+        return
+
+    stems_to_keep = set(paired_stems[:limit])
+    stems_to_remove = [s for s in paired_stems if s not in stems_to_keep]
+
+    files_to_delete = []
+    for stem in stems_to_remove:
+        if stem in image_map:
+            files_to_delete.append(image_map[stem])
+        if stem in label_map:
+            files_to_delete.append(label_map[stem])
+
+    action = "se borrarian" if dry_run_mode else "se borraran"
+    print(f"Pares a eliminar: {len(stems_to_remove)}")
+    print(f"Archivos que {action}: {len(files_to_delete)}")
+
+    deleted_count = 0
+    delete_errors = 0
+
+    if not dry_run_mode:
+        total = len(files_to_delete)
+        for index, file_path in enumerate(files_to_delete, start=1):
+            try:
+                file_path.unlink()
+                deleted_count += 1
+            except OSError as exc:
+                delete_errors += 1
+                print(f"ERROR deleting {file_path}: {exc}")
+            _print_progress("Progreso eliminacion", index, total)
+
+    if dry_run_mode:
+        print(f"Archivos que se borrarian: {len(files_to_delete)}")
+    else:
+        print(f"Archivos borrados: {deleted_count}")
+        print(f"Errores de borrado: {delete_errors}")
+    print(f"Pares restantes en train: {min(current_count, limit)}")
 
 
 def _upsert_top_level_yaml_value(lines: List[str], key: str, value: str) -> bool:
@@ -570,9 +635,11 @@ def main() -> None:
     print(f"val_percentage={val_percentage}")
     print(f"nok_percentage={nok_percentage}")
     print(f"dry_run={dry_run}")
+    print(f"max_images={max_images}")
 
     dataset_root = validate_dataset_folder(dataset_folder)
     step_1_sync_train_pairs(dataset_root=dataset_root, dry_run_mode=dry_run)
+    step_limit_images(dataset_root=dataset_root, limit=max_images, dry_run_mode=dry_run)
     step_2_update_data_yaml(dataset_root=dataset_root)
     step_3_split_nok_train_val(dataset_root=dataset_root, val_percentage_value=val_percentage)
     step_4_add_ok_images_for_nok_percentage(
