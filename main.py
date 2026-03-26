@@ -1,12 +1,14 @@
 import re
 import math
+import shutil
 from collections import defaultdict
 from pathlib import Path
-from typing import DefaultDict, Dict, Iterable, List, Set, Tuple
+from typing import DefaultDict, Dict, Iterable, List, Optional, Set, Tuple
 
 # User configuration
 dataset_folder = "Best_Seg_DefSide021326"  # Relative folder inside datasets/
 ok_folder = "side_ok"  # Relative folder inside dataset_folder
+train_import_folder = ""  # Absolute path or relative to project root. Empty = skip import to images/train
 model = "yolo26s --seg.pt"  # Base model for YOLO(...)
 val_percentage = 20  # Reserved for upcoming steps
 nok_percentage = 35  # Reserved for upcoming steps
@@ -57,6 +59,13 @@ def validate_dataset_folder(dataset_name: str) -> Path:
         raise ValueError("dataset_folder cannot contain '..'")
 
     return Path("datasets") / dataset_path
+
+
+def resolve_optional_folder(folder_name: str) -> Optional[Path]:
+    if not folder_name or not folder_name.strip():
+        return None
+
+    return Path(folder_name.strip())
 
 
 def step_1_sync_train_pairs(dataset_root: Path, dry_run_mode: bool) -> dict:
@@ -142,6 +151,100 @@ def step_1_sync_train_pairs(dataset_root: Path, dry_run_mode: bool) -> dict:
         "deleted": deleted_count,
         "delete_errors": delete_errors,
     }
+
+
+def step_1_1_import_images_to_train(dataset_root: Path, source_folder_name: str) -> None:
+    print("\nPaso 1.1: Importar imagenes adicionales a images/train")
+
+    source_folder = resolve_optional_folder(source_folder_name)
+    if source_folder is None:
+        print("train_import_folder vacio, se omite este paso.")
+        return
+
+    if not source_folder.exists() or not source_folder.is_dir():
+        raise FileNotFoundError(f"Source folder does not exist: {source_folder}")
+
+    images_train = dataset_root / "images" / "train"
+    labels_train = dataset_root / "labels" / "train"
+    images_val = dataset_root / "images" / "val"
+    labels_val = dataset_root / "labels" / "val"
+
+    if not images_train.exists() or not images_train.is_dir():
+        raise FileNotFoundError(f"Missing folder: {images_train}")
+    if not labels_train.exists() or not labels_train.is_dir():
+        raise FileNotFoundError(f"Missing folder: {labels_train}")
+
+    candidate_images = list_images_recursive(source_folder)
+    print(f"Carpeta origen: {source_folder.resolve()}")
+    print(f"Imagenes encontradas en origen: {len(candidate_images)}")
+
+    if not candidate_images:
+        print("No se encontraron imagenes para importar.")
+        return
+
+    candidate_by_stem: DefaultDict[str, List[Path]] = defaultdict(list)
+    for path in candidate_images:
+        candidate_by_stem[path.stem.lower()].append(path)
+
+    duplicate_candidate_stems = [stem for stem, paths in candidate_by_stem.items() if len(paths) > 1]
+    if duplicate_candidate_stems:
+        sample = ", ".join(sorted(duplicate_candidate_stems)[:5])
+        raise ValueError(f"Source folder has duplicate stems: {sample}")
+
+    existing_stems = set(build_file_map(images_train, IMAGE_EXTENSIONS).keys())
+    existing_stems.update(build_file_map(labels_train, LABEL_EXTENSIONS).keys())
+
+    if images_val.exists() and images_val.is_dir():
+        existing_stems.update(build_file_map(images_val, IMAGE_EXTENSIONS).keys())
+    if labels_val.exists() and labels_val.is_dir():
+        existing_stems.update(build_file_map(labels_val, LABEL_EXTENSIONS).keys())
+
+    images_to_import = []
+    skipped_existing = 0
+    for stem in sorted(candidate_by_stem.keys()):
+        candidate = candidate_by_stem[stem][0]
+        if stem in existing_stems:
+            skipped_existing += 1
+            continue
+        images_to_import.append(candidate)
+
+    print(f"Imagenes nuevas a importar: {len(images_to_import)}")
+    print(f"Imagenes omitidas por stem existente: {skipped_existing}")
+
+    if not images_to_import:
+        print("No hay imagenes nuevas para agregar a train.")
+        return
+
+    copied_images = []
+    created_labels = []
+    total_ops = len(images_to_import)
+    _print_progress("Progreso importacion train", 0, total_ops)
+    try:
+        for index, src in enumerate(images_to_import, start=1):
+            image_dst = images_train / src.name
+            label_dst = labels_train / f"{src.stem}.txt"
+
+            if image_dst.exists():
+                raise FileExistsError(f"Target image already exists: {image_dst}")
+            if label_dst.exists():
+                raise FileExistsError(f"Target label already exists: {label_dst}")
+
+            shutil.copy2(src, image_dst)
+            copied_images.append(image_dst)
+            label_dst.write_text("", encoding="utf-8")
+            created_labels.append(label_dst)
+            _print_progress("Progreso importacion train", index, total_ops)
+    except Exception:
+        for label_path in reversed(created_labels):
+            if label_path.exists():
+                label_path.unlink()
+        for image_path in reversed(copied_images):
+            if image_path.exists():
+                image_path.unlink()
+        raise
+
+    print(f"Imagenes importadas a train: {len(images_to_import)}")
+    print(f"Labels vacios creados: {len(created_labels)}")
 
 
 def step_limit_images(dataset_root: Path, limit: int, dry_run_mode: bool) -> None:
@@ -631,6 +734,7 @@ def main() -> None:
     print("Flujo de automatizacion de dataset")
     print(f"dataset_folder={dataset_folder}")
     print(f"ok_folder={ok_folder}")
+    print(f"train_import_folder={train_import_folder}")
     print(f"model={model}")
     print(f"val_percentage={val_percentage}")
     print(f"nok_percentage={nok_percentage}")
@@ -639,6 +743,7 @@ def main() -> None:
 
     dataset_root = validate_dataset_folder(dataset_folder)
     step_1_sync_train_pairs(dataset_root=dataset_root, dry_run_mode=dry_run)
+    step_1_1_import_images_to_train(dataset_root=dataset_root, source_folder_name=train_import_folder)
     step_limit_images(dataset_root=dataset_root, limit=max_images, dry_run_mode=dry_run)
     step_2_update_data_yaml(dataset_root=dataset_root)
     step_3_split_nok_train_val(dataset_root=dataset_root, val_percentage_value=val_percentage)
