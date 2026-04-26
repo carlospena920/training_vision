@@ -5,12 +5,12 @@ from pathlib import Path
 from typing import DefaultDict, Dict, Iterable, List, Set, Tuple
 
 # User configuration
-dataset_folder = "Best_Seg_DefSide021326"  # Relative folder inside datasets/
-ok_folder = "side_ok"  # Relative folder inside dataset_folder
-model = "yolo26s --seg.pt"  # Base model for YOLO(...)
-val_percentage = 20  # Reserved for upcoming steps
-nok_percentage = 35  # Reserved for upcoming steps
-dry_run = True  # True = simulate deletes, False = delete orphan files
+dataset_folder = "Side_NOK_NylonInForm_Classified2"  # Relative folder inside datasets/
+ok_folder = "img_ok"  # Relative folder inside dataset_folder
+model = "best.pt"  # Base model for YOLO(...)
+val_percentage = 30  # Reserved for upcoming steps
+nok_percentage = 30  # Reserved for upcoming steps
+dry_run = False  # True = simulate deletes, False = delete orphan files
 max_images = 0  # Max images to keep per split (train/val). 0 = no limit
 
 
